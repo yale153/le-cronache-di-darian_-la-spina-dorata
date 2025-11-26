@@ -125,65 +125,67 @@ const App: React.FC = () => {
       return false;
   };
 
-  // 2. MD Save (Export)
-  const handleExportMD = () => {
-      // Create readable story text
-      const storyText = messages.map(m => {
-          const sender = m.role === 'user' ? 'Darian Crane' : 'Dungeon Master';
-          return `**${sender}**: ${m.text}`;
-      }).join('\n\n');
+  // 2. Online Save (Blob)
+const handleOnlineSave = async () => {
+    const storyText = messages.map(m => {
+        const sender = m.role === 'user' ? 'Darian Crane' : 'Dungeon Master';
+        return `**${sender}**: ${m.text}`;
+    }).join('\n\n');
 
-      // Create hidden data block
-      const gameState = { character, location, messages, historyIndex, history, suggestedActions };
-      const hiddenData = `<!-- DATA_BLOCK_START\n${JSON.stringify(gameState)}\nDATA_BLOCK_END -->`;
+    const gameState = { character, location, messages, historyIndex, history, suggestedActions };
+    const hiddenData = `<!-- DATA_BLOCK_START\n${JSON.stringify(gameState)}\nDATA_BLOCK_END -->`;
 
-      const fileContent = `# Le Cronache di Darian\n\n${storyText}\n\n${hiddenData}`;
-      
-      const blob = new Blob([fileContent], { type: 'text/markdown' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `darian_story_${new Date().toISOString().slice(0,10)}.md`;
-      a.click();
-      URL.revokeObjectURL(url);
-  };
+    const fileContent = `# Le Cronache di Darian\n\n${storyText}\n\n${hiddenData}`;
+    const filename = `darian_story_${new Date().toISOString().slice(0,10)}_${Date.now()}.md`;
 
-  // 3. MD Load (Import)
-  const handleImportMD = (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (e) => {
-          try {
-              const text = e.target?.result as string;
-              // Extract hidden data
-              const match = text.match(/DATA_BLOCK_START\n([\s\S]*?)\nDATA_BLOCK_END/);
-              
-              if (match && match[1]) {
-                  const data = JSON.parse(match[1]);
-                  if (data.character && data.location && data.messages) {
-                      setCharacter(data.character);
-                      setLocation(data.location);
-                      setMessages(data.messages);
-                      setSuggestedActions(data.suggestedActions || []);
-                      setHistory(data.history || []);
-                      setHistoryIndex(data.historyIndex || -1);
-                      resetSession(); // Reset AI
-                      alert("Storia caricata con successo dal file MD!");
-                  } else {
-                      throw new Error("Dati corrotti");
-                  }
-              } else {
-                  alert("Impossibile trovare dati di salvataggio validi in questo file MD.");
-              }
-          } catch (err) {
-              alert("Errore nel caricamento del file.");
-              console.error(err);
-          }
-      };
-      reader.readAsText(file);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+    try {
+        const response = await fetch('/api/upload-game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename, content: fileContent }),
+        });
+        const data = await response.json();
+        if (data.url) {
+            alert(`Partita salvata online! URL: ${data.url}`);
+            navigator.clipboard.writeText(data.url); // Copia negli appunti
+        }
+    } catch (error) {
+        alert('Errore nel salvataggio online');
+    }
+};
+
+// 3. Online Load (Blob)
+const handleOnlineLoad = async (url: string) => {
+    try {
+        const response = await fetch(`/api/load-game?url=${encodeURIComponent(url)}`);
+        const data = await response.json();
+        if (data.content) {
+            const text = data.content;
+            const match = text.match(/DATA_BLOCK_START\n([\s\S]*?)\nDATA_BLOCK_END/);
+            
+            if (match && match[1]) {
+                const gameData = JSON.parse(match[1]);
+                if (gameData.character && gameData.location && gameData.messages) {
+                    setCharacter(gameData.character);
+                    setLocation(gameData.location);
+                    setMessages(gameData.messages);
+                    setSuggestedActions(gameData.suggestedActions || []);
+                    setHistory(gameData.history || []);
+                    setHistoryIndex(gameData.historyIndex || -1);
+                    resetSession();
+                    alert("Storia caricata con successo dall'URL!");
+                } else {
+                    throw new Error("Dati corrotti");
+                }
+            } else {
+                alert("Impossibile trovare dati di salvataggio validi nell'URL.");
+            }
+        }
+    } catch (err) {
+        alert("Errore nel caricamento dall'URL.");
+        console.error(err);
+    }
+};
 
   // Spell Logic
   const handleCastSpell = (spell: Spell) => {
@@ -538,22 +540,32 @@ const App: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 justify-between md:justify-end">
                 
                 <div className="flex gap-1 items-center bg-slate-800/50 p-1 rounded">
-                    {/* Browser Save */}
-                    <button onClick={handleBrowserSave} className="text-slate-400 hover:text-green-400 p-2 rounded hover:bg-slate-800 transition" title="Salva su Browser">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                    </button>
-                    
-                    {/* Download MD */}
-                    <button onClick={handleExportMD} className="text-slate-400 hover:text-blue-400 p-2 rounded hover:bg-slate-800 transition" title="Scarica Storia (.md)">
-                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    </button>
+    {/* Browser Save */}
+    <button onClick={handleBrowserSave} className="text-slate-400 hover:text-green-400 p-2 rounded hover:bg-slate-800 transition" title="Salva su Browser">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17,21 17,13 7,13 7,21"/>
+            <polyline points="7,3 7,8 15,8"/>
+        </svg>
+    </button>
+    
+    {/* Online Save */}
+    <button onClick={handleOnlineSave} className="text-slate-400 hover:text-blue-400 p-2 rounded hover:bg-slate-800 transition" title="Salva Online">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7,10 12,15 17,10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+    </button>
 
-                    {/* Upload MD */}
-                    <label className="text-slate-400 hover:text-purple-400 p-2 cursor-pointer rounded hover:bg-slate-800 transition" title="Carica Storia (.md)">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        <input type="file" className="hidden" accept=".md" onChange={handleImportMD} ref={fileInputRef} />
-                    </label>
-                </div>
+    {/* Online Load */}
+    <input
+        type="text"
+        placeholder="URL per caricare"
+        className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-amber-500 outline-none"
+        onKeyDown={(e) => { if (e.key === 'Enter' && e.currentTarget.value) { handleOnlineLoad(e.currentTarget.value); e.currentTarget.value = ''; } }}
+    />
+</div>
 
                 {/* Undo/Redo */}
                 <div className="flex gap-1 bg-slate-800/50 p-1 rounded">
