@@ -127,6 +127,9 @@ const App: React.FC = () => {
 
   // 2. Online Save (Blob)
 const handleOnlineSave = async () => {
+    const sessionCode = prompt("Inserisci un codice per questa sessione (es. mia-partita):");
+    if (!sessionCode || sessionCode.trim() === '') return;
+
     const storyText = messages.map(m => {
         const sender = m.role === 'user' ? 'Darian Crane' : 'Dungeon Master';
         return `**${sender}**: ${m.text}`;
@@ -136,7 +139,7 @@ const handleOnlineSave = async () => {
     const hiddenData = `<!-- DATA_BLOCK_START\n${JSON.stringify(gameState)}\nDATA_BLOCK_END -->`;
 
     const fileContent = `# Le Cronache di Darian\n\n${storyText}\n\n${hiddenData}`;
-    const filename = `darian_story_${new Date().toISOString().slice(0,10)}_${Date.now()}.md`;
+    const filename = sessionCode.trim() + '.md';
 
     try {
         const response = await fetch('/api/upload-game', {
@@ -146,8 +149,7 @@ const handleOnlineSave = async () => {
         });
         const data = await response.json();
         if (data.url) {
-            alert(`Partita salvata online! URL: ${data.url}`);
-            navigator.clipboard.writeText(data.url); // Copia negli appunti
+            alert(`Sessione salvata con codice: ${sessionCode}. Puoi caricarla inserendo questo codice.`);
         }
     } catch (error) {
         alert('Errore nel salvataggio online');
@@ -155,7 +157,12 @@ const handleOnlineSave = async () => {
 };
 
 // 3. Online Load (Blob)
-const handleOnlineLoad = async (url: string) => {
+const handleOnlineLoad = async () => {
+    const sessionCode = prompt("Inserisci il codice della sessione da caricare:");
+    if (!sessionCode || sessionCode.trim() === '') return;
+
+    const url = `https://blob.vercel-storage.com/v1/le-cronache-di-darian-la-spina-dora.vercel.app/${sessionCode.trim()}.md`;
+
     try {
         const response = await fetch(`/api/load-game?url=${encodeURIComponent(url)}`);
         const data = await response.json();
@@ -173,16 +180,18 @@ const handleOnlineLoad = async (url: string) => {
                     setHistory(gameData.history || []);
                     setHistoryIndex(gameData.historyIndex || -1);
                     resetSession();
-                    alert("Storia caricata con successo dall'URL!");
+                    alert("Sessione caricata con successo!");
                 } else {
                     throw new Error("Dati corrotti");
                 }
             } else {
-                alert("Impossibile trovare dati di salvataggio validi nell'URL.");
+                alert("Impossibile trovare dati di salvataggio validi per questo codice.");
             }
+        } else {
+            alert("Sessione non trovata. Controlla il codice.");
         }
     } catch (err) {
-        alert("Errore nel caricamento dall'URL.");
+        alert("Errore nel caricamento.");
         console.error(err);
     }
 };
